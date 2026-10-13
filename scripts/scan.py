@@ -38,8 +38,12 @@ from urllib.parse import urlparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import secret_scan  # noqa: E402
 
-VENDOR_DIRS = {".git", "node_modules", "bin", "obj", "__pycache__", ".venv", "venv", "vendor", ".angular"}
-BUILD_DIRS = {"dist", "build", "out", "wwwroot", "coverage", ".output", ".next"}
+# Never inspected: dependencies, caches, and test-run artifacts.
+VENDOR_DIRS = {".git", "node_modules", "bin", "obj", "__pycache__", ".venv", "venv", "vendor", ".angular",
+               "test-results", "TestResults", "playwright-report", ".pytest_cache", ".mypy_cache", ".gradle"}
+# Generated output: skipped by the code checks, but D3 looks inside for source maps because it can ship.
+# Any folder whose name ends in `-output` counts too (see is_build_dir).
+BUILD_DIRS = {"dist", "build", "out", "output", "target", "artifacts", "wwwroot", "coverage", ".output", ".next"}
 CODE_EXT = {
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html", ".cs", ".py", ".java", ".kt",
     ".go", ".rb", ".php", ".rs",
@@ -79,6 +83,14 @@ class Finding:
     status: str  # PASS | WARN | FAIL | SKIP | INFO
     detail: str
     evidence: list = field(default_factory=list)
+    hits: list = field(default_factory=list)  # every file that triggered it, one entry per hit (setup.py reads this)
+    protected: bool = False  # setup.py never suggests an ignore rule for a protected finding
+
+
+def file_of(hit):
+    """Return the file part of an evidence string like `path:12` or `path:12  kind`."""
+    m = re.match(r"(.+?):\d+(?:\s|$)", hit)
+    return m.group(1) if m else hit
 
 
 class Ignores:
@@ -129,8 +141,13 @@ def git_lines(root, *args):
     return r[1].splitlines()
 
 
-def under_skipped(rel, dirs):
-    return any(part in dirs for part in rel.split("/")[:-1])
+def is_build_dir(name):
+    return name in BUILD_DIRS or name.endswith("-output")
+
+
+def under_skipped(rel, dirs, build=False):
+    """True when any parent folder of `rel` is in `dirs`, or (with build=True) is a build folder."""
+    return any(part in dirs or (build and is_build_dir(part)) for part in rel.split("/")[:-1])
 
 
 def list_files(root):
@@ -148,7 +165,7 @@ def list_files(root):
 
 def code_files(root, tracked, untracked, exts):
     for rel in tracked + untracked:
-        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS):
+        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS, build=True):
             continue
         if os.path.splitext(rel)[1].lower() in exts:
             yield rel
@@ -173,7 +190,7 @@ def walk_for(root, names=None, suffixes=(), max_depth=4, skip=VENDOR_DIRS | BUIL
     for dirpath, dirnames, filenames in os.walk(root):
         if dirpath.count(os.sep) - base_depth >= max_depth:
             dirnames[:] = []
-        dirnames[:] = [d for d in dirnames if d not in skip]
+        dirnames[:] = [d for d in dirnames if d not in skip and not d.endswith("-output")]
         for name in filenames:
             if (names and name in names) or (suffixes and name.endswith(suffixes)):
                 out.append(os.path.join(dirpath, name))
@@ -192,7 +209,8 @@ def more(items):
 def check_raw_sql(root, files, ig):
     hits = grep_files(root, ig.filter(files, "A1"), RAW_SQL)
     if hits:
-        return [Finding("A1", "WARN", f"{len(hits)} raw-SQL candidate(s); review each for parameterization", more(hits))]
+        return [Finding("A1", "WARN", f"{len(hits)} raw-SQL candidate(s); review each for parameterization",
+                        more(hits), [file_of(h) for h in hits])]
     return [Finding("A1", "PASS", "no raw-SQL candidates found (heuristic; does not prove absence)")]
 
 
@@ -200,14 +218,16 @@ def check_token_storage(root, files, ig):
     rels = [f for f in ig.filter(files, "C3") if os.path.splitext(f)[1].lower() in FRONTEND_EXT]
     hits = grep_files(root, rels, [TOKEN_STORE])
     if hits:
-        return [Finding("C3", "WARN", f"{len(hits)} browser-storage write(s) that may hold tokens or user objects", more(hits))]
+        return [Finding("C3", "WARN", f"{len(hits)} browser-storage write(s) that may hold tokens or user objects",
+                        more(hits), [file_of(h) for h in hits])]
     return [Finding("C3", "PASS", "no token-shaped browser storage writes found")]
 
 
 def check_cors(root, files, ig):
     hits = grep_files(root, ig.filter(files, "D1"), [CORS_WILDCARD])
     if hits:
-        return [Finding("D1", "WARN", f"{len(hits)} permissive CORS pattern(s)", more(hits))]
+        return [Finding("D1", "WARN", f"{len(hits)} permissive CORS pattern(s)", more(hits),
+                        [file_of(h) for h in hits])]
     return [Finding("D1", "PASS", "no wildcard CORS patterns found")]
 
 
@@ -216,12 +236,13 @@ def check_source_maps(root, ig):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in VENDOR_DIRS]
         rel_parts = os.path.relpath(dirpath, root).split(os.sep)
-        if not any(p in BUILD_DIRS for p in rel_parts):
+        if not any(is_build_dir(p) for p in rel_parts):
             continue
         found += [os.path.relpath(os.path.join(dirpath, n), root) for n in filenames if n.endswith(".map")]
     found = ig.filter(found, "D3")
     if found:
-        return [Finding("D3", "WARN", f"{len(found)} source map file(s) in build output", more(sorted(found)))]
+        return [Finding("D3", "WARN", f"{len(found)} source map file(s) in build output", more(sorted(found)),
+                        list(found))]
     return [Finding("D3", "PASS", "no .map files in build output directories")]
 
 
@@ -231,12 +252,14 @@ def check_sensitive_files(tracked, untracked, is_git, ig):
     bad = [f for f in tracked if SENSITIVE_FILE.search(f) and not SENSITIVE_OK.search(f)
            and not under_skipped(f, {"node_modules", ".git"})]
     if bad:
-        out.append(Finding("C5", "FAIL", f"{len(bad)} tracked secret-shaped file(s); rotate anything they hold", more(bad)))
+        out.append(Finding("C5", "FAIL", f"{len(bad)} tracked secret-shaped file(s); rotate anything they hold",
+                           more(bad), list(bad), protected=True))
     loose = [f for f in untracked if SENSITIVE_FILE.search(f) and not SENSITIVE_OK.search(f)
              and not under_skipped(f, {"node_modules", ".git"})]
     if loose:
         note = "present and NOT git-ignored" if is_git else "present (git status unknown)"
-        out.append(Finding("C5", "WARN", f"{len(loose)} secret-shaped file(s) {note}", more(loose)))
+        out.append(Finding("C5", "WARN", f"{len(loose)} secret-shaped file(s) {note}", more(loose),
+                           list(loose), protected=True))
     if not out:
         out.append(Finding("C5", "PASS", "no tracked or loose secret-shaped files"))
     return out
@@ -267,17 +290,19 @@ def check_secrets(root, tracked, untracked, is_git, ig):
     if leaks is not None:
         leaks = [f"{f}:{n}  {rule}" for f, n, rule in leaks if not ig.hides(f, "C5")]
         if leaks:
-            return [Finding("C5", "FAIL", f"gitleaks: {len(leaks)} finding(s), history included; rotate them", more(leaks))]
+            return [Finding("C5", "FAIL", f"gitleaks: {len(leaks)} finding(s), history included; rotate them",
+                            more(leaks), [file_of(h) for h in leaks])]
         return [Finding("C5", "PASS", "gitleaks: no findings (working tree and history)")]
     hits = []
     for rel in ig.filter(tracked + untracked, "C5"):
-        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS) or SENSITIVE_OK.search(rel):
+        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS, build=True) or SENSITIVE_OK.search(rel):
             continue
         for lineno, kind in secret_scan.scan_file(os.path.join(root, rel)):
             hits.append(f"{rel}:{lineno}  {kind}")
     note = "fallback pattern scan; gitleaks not installed, git history NOT scanned"
     if hits:
-        return [Finding("C5", "FAIL", f"{len(hits)} secret-shaped string(s) ({note}); rotate them", more(hits))]
+        return [Finding("C5", "FAIL", f"{len(hits)} secret-shaped string(s) ({note}); rotate them", more(hits),
+                        [file_of(h) for h in hits])]
     return [Finding("C5", "PASS", f"no secret-shaped strings in the working tree ({note})")]
 
 
@@ -480,7 +505,8 @@ def main(argv=None):
 
     findings = collect(args)
     if args.json:
-        print(json.dumps([f.__dict__ for f in findings], indent=2))
+        print(json.dumps([{k: v for k, v in f.__dict__.items() if k not in ("hits", "protected")}
+                          for f in findings], indent=2))
     else:
         print(render(findings))
     if args.fail_on != "none" and any(f.status == "FAIL" for f in findings):

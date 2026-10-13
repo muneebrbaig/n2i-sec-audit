@@ -1,4 +1,5 @@
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -109,6 +110,36 @@ class SkillFile(unittest.TestCase):
         for needle in ("phased plan", "Draft tickets", "n2i-dev-cycle", "Stop"):
             with self.subTest(option=needle):
                 self.assertIn(needle, self.skill)
+
+    def test_first_run_flows_are_documented_and_ask_before_writing(self):
+        self.assertTrue((ROOT / "scripts/setup.py").exists())
+        for needle in (
+            "scripts/setup.py config",
+            "scripts/setup.py ignores",
+            "accept all, or name the keys to change",
+            "Tracked secret-shaped files are never suggested",
+            "Do not edit `.gitignore` yourself",
+            "`known` rules",
+            "`review` rules",
+            "ask once",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, self.skill)
+
+    def test_safety_rule_lists_every_file_the_skill_may_write(self):
+        rule = next(ln for ln in self.skill.splitlines() if ln.startswith("1. **Read-only on the project.**"))
+        for needle in (".n2i-sec-audit/", ".secauditignore", "does not edit source"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, rule)
+
+    def test_every_config_key_has_a_proposal_and_an_example_entry(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import setup as setup_mod
+        example = (ROOT / "n2i-sec-audit.config.example").read_text()
+        for key in setup_mod.KNOWN_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(f"{key}=", example)
+                self.assertIn(key, (ROOT / "README.md").read_text())
 
     def test_agent_fallback_ladder_is_documented(self):
         for needle in (

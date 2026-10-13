@@ -53,7 +53,7 @@ If the input is ambiguous, ask once.
 
 These hold in every mode and override convenience.
 
-1. **Read-only on the project.** The only files this skill writes are the report (and, when asked, the accepted-risks file) under the configured report directory, and its own `.n2i-sec-audit/` folder. It does not edit source, config, or dependencies. It does not commit or push.
+1. **Read-only on the project.** The only files this skill writes are the report (and, when asked, the accepted-risks file) under the configured report directory, its own `.n2i-sec-audit/` folder (including the config the user approved), and the `.secauditignore` rules the user accepted. It does not edit source, other config, `.gitignore`, or dependencies. It does not commit or push.
 2. **Never print a secret value.** Not in chat, not in the report, not in the ledger. Cite the location and the kind. Do not read credential files (`.env*`, `*.bak` credential files, keys, certificates) to report on them; check that they exist and whether `git check-ignore` covers them. If a tool result shows a secret anyway, say so once, treat it as exposed, and recommend rotation without repeating the value.
 3. **No attack traffic.** The only network check is one `GET` for response headers (`scan.py --url`), against a local or owned target. Remote targets need `--allow-remote` and the user's confirmation that they own the target. Never point it at production without the user saying so. No fuzzing, brute force, or exploitation. A dynamic scanner is out of scope for this skill.
 4. **No installs without asking.** Name the package, why it is needed, approximate size, and approximate install time. `gitleaks` is optional: use it if present, otherwise use the built-in fallback and say history was not scanned.
@@ -64,7 +64,12 @@ These hold in every mode and override convenience.
 
 1. Read the repo's `CLAUDE.md`/`README`, the config (if any), and `.n2i-sec-audit/notes.md` (if present). Scan `notes.md` for credential shapes (a password in a URL, `Bearer ` tokens, PEM headers, long `key=`/`secret=` literals) and warn if found; it flows into the ledger and reports.
 2. Confirm `.n2i-sec-audit/` is in the repo's `.gitignore`. If missing, tell the user to add it (the only tracked file this skill would ever touch, and it won't touch it).
-3. First run (`CONFIG=none`): offer a config from the detected values. Show the exact contents and path (`<root>/.n2i-sec-audit/config`) and ask once. Yes: create it. No: carry the values in memory.
+3. First run (`CONFIG=none`): set up the config.
+   - Run `python3 <SKILL_DIR>/scripts/setup.py config <repo>`. It proposes every config key with a value already filled in, taken from the repo (stacks, scope directories, a local URL from `.claude/launch.json`) or from the default, with a reason for each.
+   - Show that list. Ask once: accept all, or name the keys to change.
+   - Run the command again with `--write`, adding `--set KEY=VALUE` for each change. It writes `<root>/.n2i-sec-audit/config` and refuses to overwrite an existing file.
+   - If the output says `.gitignore` lacks `.n2i-sec-audit/`, tell the user. Do not edit `.gitignore` yourself.
+   - If the user declines, carry the proposed values in memory for this run.
 4. Load the references:
    - `<SKILL_DIR>/references/checklist.md`
    - the adapter for each detected stack: `references/stacks/dotnet-angular.md` for `dotnet`/`angular`, `references/stacks/node-python.md` for `node`/`python`, and `references/stacks/generic.md` for anything else (or alongside, for mixed repos). Tell the user which adapters are driving the audit. With only the generic adapter, say the audit is thinner.
@@ -86,6 +91,14 @@ python3 <SKILL_DIR>/scripts/scan.py <repo> [--url <local-or-owned-url>] [--offli
 - C5 uses `gitleaks` when installed (history included), otherwise a pattern scan of the working tree only. The report must say which ran.
 - Read the code behind every WARN before you call it a finding. Treat every FAIL as likely, and confirm it by reading before you report it.
 - If any output shows a secret value, follow safety rule 2.
+
+**First run, or a scan drowned in noise.** When no `.secauditignore` exists, run `python3 <SKILL_DIR>/scripts/setup.py ignores <repo>` after the scan.
+- It groups the noise it found (test code, build output that does not ship, legacy trees) into suggested rules with hit counts and a reason each.
+- `known` rules match patterns that are almost always noise. `review` rules could hide a real problem (for example a `wwwroot` folder that ships, or a legacy tree that still runs). Recommend a `review` rule only after you have checked the folder.
+- Tracked secret-shaped files are never suggested.
+- Show the list, say which rules you would accept and why, and ask once. Write the accepted rules with `--write --accept <numbers or known>`, then re-run the scan.
+- Tell the user the scanner already skips dependency, cache, test-run, and build folders for code checks (`node_modules`, `bin`, `obj`, `venv`, `vendor`, `test-results`, `playwright-report`, `dist`, `build`, `out`, `output`, `target`, `wwwroot`, `coverage`, and any folder ending in `-output`). It still looks inside build folders for source maps (D3), because they can ship.
+- On later runs, ask again only when a new noisy folder dominates the output.
 
 Append `Step 2: scan <summary line>` to the ledger.
 

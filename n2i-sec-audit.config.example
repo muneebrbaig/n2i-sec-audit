@@ -1,6 +1,7 @@
 # n2i-sec-audit skill config.
-# Copy this file to <target repo root>/.n2i-sec-audit/config, next to the .git directory.
-# The skill reads it when present. The first run offers to create it for you.
+# The first run writes this file for you: `python3 scripts/setup.py config <repo> --write`
+# fills in each value from the repo, or from the default shown here. You can also copy this
+# file to <target repo root>/.n2i-sec-audit/config, next to the .git directory.
 # The .n2i-sec-audit/ folder holds local, per-developer state. Add this line to the
 # target repo's .gitignore:
 #   .n2i-sec-audit/

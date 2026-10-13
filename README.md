@@ -46,9 +46,25 @@ Run `install-agents.sh` again after each `git pull`, because a release can add a
 
 [PROJECT-INSTALL.md](PROJECT-INSTALL.md) shows how to add the skill as a git submodule with a SessionStart hook that keeps it current. It works the same way as `n2i-dev-cycle`.
 
+## First run
+
+On the first audit in a repo the skill asks two questions, and fills in the answers for you.
+
+1. **Config.** `scripts/setup.py config` proposes every setting with a value already filled in. It reads the stacks and scope directories from your manifests, picks up a local URL from `.claude/launch.json`, and uses the default for everything else. Each line carries a reason. You accept all of it or name the keys to change, and the skill writes `.n2i-sec-audit/config`.
+2. **Ignore rules.** After the first scan, `scripts/setup.py ignores` groups the noise it found into suggested `.secauditignore` rules, with hit counts. The scanner already skips dependency, cache, test-run, and build folders without a rule (`node_modules`, `test-results`, `playwright-report`, `dist`, `build`, `out`, `output`, `wwwroot`, any `*-output` folder, and similar), so the suggestions cover only what is left. It still looks inside build folders for source maps, because they can ship. `known` rules cover patterns that are almost always noise: test code, and build output that does not ship. `review` rules could hide a real problem, such as a `wwwroot` folder that ships or a legacy tree that still runs, so the skill recommends them only after it checks. Tracked secret-shaped files are never suggested. You pick the rules, the skill appends them with a reason, and the scan runs again.
+
+Later runs skip both questions. You can run either script yourself:
+
+```bash
+python3 scripts/setup.py config .                              # preview the proposed config
+python3 scripts/setup.py config . --write --set FAIL_ON=high   # save it, with a change
+python3 scripts/setup.py ignores .                             # preview the suggested rules
+python3 scripts/setup.py ignores . --write --accept known      # add the "known" rules
+```
+
 ## Configure
 
-Per-repo settings live in `<repo>/.n2i-sec-audit/config`. Copy `n2i-sec-audit.config.example` to start. Add `.n2i-sec-audit/` to the repo's `.gitignore`: the folder holds local state (config, optional notes, the step ledger, the last scan output). The report goes in the repo, under `docs/` by default, so the team can review and commit it.
+Per-repo settings live in `<repo>/.n2i-sec-audit/config`. The first run writes it, and `n2i-sec-audit.config.example` documents every key. Add `.n2i-sec-audit/` to the repo's `.gitignore`: the folder holds local state (config, optional notes, the step ledger, the last scan output). The report goes in the repo, under `docs/` by default, so the team can review and commit it.
 
 Keys: `REPORT_DIR`, `REPORT_GLOB`, `ACCEPTED_RISKS`, `STACKS`, `SCOPE_DIRS`, `EXCLUDE_DIRS`, `CHECK_SKIP`, `SCAN_URL`, `FAIL_ON`, `NEXT_STEP`. All are optional.
 

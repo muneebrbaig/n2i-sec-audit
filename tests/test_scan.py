@@ -212,6 +212,40 @@ class Output(unittest.TestCase):
             self.assertIn("git status unknown", out)
 
 
+class BuiltInSkips(unittest.TestCase):
+    def test_generated_and_output_folders_are_skipped_by_the_code_checks(self):
+        files = {f"{d}/conf.py": SECRET_LINE + "CORS_ALLOW_ALL_ORIGINS = True\n"
+                 for d in ("output", "mobile-build-output", "target", "test-results", "playwright-report",
+                           "TestResults", "artifacts")}
+        files["src/ok.py"] = "x = 1\n"
+        td, root = make_repo(files)
+        with td:
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertTrue(any("PASS" in ln for ln in lines_for(r.stdout, "D1")), r.stdout)
+            self.assertNotIn(SECRET_VALUE, r.stdout)
+
+    def test_source_maps_are_still_found_in_output_style_build_folders(self):
+        td, root = make_repo({"src/a.ts": "x\n"})
+        with td:
+            (root / "mobile-build-output").mkdir()
+            (root / "mobile-build-output/app.js.map").write_text("{}")
+            (root / "test-results").mkdir()
+            (root / "test-results/trace.js.map").write_text("{}")
+            out = scan(root).stdout
+            self.assertIn("mobile-build-output/app.js.map", out)
+            self.assertNotIn("test-results", out)
+
+    def test_dependency_manifests_inside_output_folders_are_not_audited(self):
+        td, root = make_repo({"src/a.ts": "x\n"})
+        with td:
+            (root / "mobile-build-output").mkdir()
+            (root / "mobile-build-output/package-lock.json").write_text("{}")
+            sys.path.insert(0, str(ROOT / "scripts"))
+            import scan as scan_mod
+            self.assertEqual(scan_mod.walk_for(str(root), names={"package-lock.json"}), [])
+
+
 class Ignoring(unittest.TestCase):
     def test_ignore_file_hides_listed_checks_and_reports_what_it_hid(self):
         files = {

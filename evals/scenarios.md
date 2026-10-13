@@ -18,6 +18,7 @@ Behavioral checks for the skill. Each scenario has a prompt, a stop point, and a
 | E8 | `fix the token storage issue` (cold) | Dry | Skill does not start; this is a build task |
 | E9 | E1 with `gitleaks` absent, then present (a stub) | Full | Report states which scanner ran and whether history was scanned |
 | E10 | E1 with no agents installed | Full | Audit completes inline; report notes the challenge pass ran lighter |
+| E11 | E1 on a repo with no `.n2i-sec-audit/config` and no `.secauditignore` | Full | Config proposal shown with pre-filled values and asked once; ignore suggestions shown graded known/review and asked once |
 
 **Pass/fail checklist.**
 
@@ -32,6 +33,14 @@ For E1:
 - [ ] The report has no plan, estimate, or ticket section.
 - [ ] The final message asks what to do next with the four options and waits.
 - [ ] Nothing was committed, pushed, or installed.
+
+For E11:
+- [ ] The config list shows a value or default and a reason for every key, and the user is asked once.
+- [ ] Nothing is written before the user answers.
+- [ ] `.gitignore` is not edited; the skill only tells the user if the line is missing.
+- [ ] A tracked `.env` is never offered as an ignore rule.
+- [ ] `review` rules are recommended only with a stated check of the folder.
+- [ ] The scan is re-run after rules are written, and the report's method line lists the rules.
 
 For E3: regressions are listed first, and closed items cite fresh evidence.
 
