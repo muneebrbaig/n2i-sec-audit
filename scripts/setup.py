@@ -264,7 +264,8 @@ def cmd_ignores(args):
         print("\nNever scanned, no rule needed: " + ", ".join(sorted(scan.VENDOR_DIRS)) + ".")
         print("Skipped only for files git does not track: " + ", ".join(sorted(scan.BUILD_DIRS))
               + ", and any folder ending in -output.")
-        print("Tracked secret-shaped files are never suggested. `review` rules can hide a real problem.")
+        print("Tracked secret-shaped files are never suggested on their own. A folder rule hides everything "
+              "under it, and the scan names every secret-shaped file it hid. `review` rules can hide a real problem.")
     if not args.write:
         return 0
     if not args.accept:

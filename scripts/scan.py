@@ -269,21 +269,27 @@ def check_source_maps(root, ig):
 
 
 def check_sensitive_files(tracked, untracked, is_git, ig):
+    def secret_shaped(f):
+        return bool(SENSITIVE_FILE.search(f)) and not SENSITIVE_OK.search(f) and not under_skipped(f, {"node_modules", ".git"})
+
+    # A rule the user wrote is honored, but the output names every secret-shaped file it hid.
+    hidden = sorted(f for f in tracked + untracked if secret_shaped(f) and ig.hides(f, "C5"))
     tracked, untracked = ig.filter(tracked, "C5"), ig.filter(untracked, "C5")
     out = []
-    bad = [f for f in tracked if SENSITIVE_FILE.search(f) and not SENSITIVE_OK.search(f)
-           and not under_skipped(f, {"node_modules", ".git"})]
+    bad = [f for f in tracked if secret_shaped(f)]
     if bad:
         out.append(Finding("C5", "FAIL", f"{len(bad)} tracked secret-shaped file(s); rotate anything they hold",
                            more(bad), list(bad), protected=True))
-    loose = [f for f in untracked if SENSITIVE_FILE.search(f) and not SENSITIVE_OK.search(f)
-             and not under_skipped(f, {"node_modules", ".git"})]
+    loose = [f for f in untracked if secret_shaped(f)]
     if loose:
         note = "present and NOT git-ignored" if is_git else "present (git status unknown)"
         out.append(Finding("C5", "WARN", f"{len(loose)} secret-shaped file(s) {note}", more(loose),
                            list(loose), protected=True))
     if not out:
         out.append(Finding("C5", "PASS", "no tracked or loose secret-shaped files"))
+    if hidden:
+        out.append(Finding("C5", "INFO", f"{len(hidden)} secret-shaped file(s) hidden by ignore rules; "
+                           "confirm they hold no live credentials", more(hidden)))
     return out
 
 

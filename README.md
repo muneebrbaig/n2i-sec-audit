@@ -91,7 +91,7 @@ tests/*        A1,C3,C5,D1
 scripts/scan.py   D1
 ```
 
-`*` matches across directories. A rule without IDs hides the file from every check. `--exclude GLOB` does the same from the command line. To skip one line, add `n2i-sec-audit: ignore` to it as a comment. The scanner always prints how many files the rules left out, and the audit reports the ignore file in the method section so a reader can judge it.
+`*` matches across directories. A rule without IDs hides the file from every check. A folder rule such as `old/*` hides everything under it, secret-shaped files included. The scan output then lists each secret-shaped file the rules hid (an `INFO` line under C5), and the report repeats the list, so the people who read it can judge the rule. `--exclude GLOB` does the same from the command line. To skip one line, add `n2i-sec-audit: ignore` to it as a comment. The scanner always prints how many files the rules left out, and the audit reports the ignore file in the method section so a reader can judge it.
 
 ### Optional: gitleaks
 

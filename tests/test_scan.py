@@ -303,6 +303,45 @@ class Ignoring(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("src/conf.py:1", r.stdout)
 
+    def test_a_folder_rule_hides_a_tracked_secret_shaped_file_and_the_output_names_it(self):
+        files = {"old/app/.env.production": "A=b\n", "old/app/x.py": "x = 1\n", ".secauditignore": "old/*\n"}
+        td, root = make_repo(files)
+        with td:
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertFalse(any("FAIL" in ln for ln in lines_for(r.stdout, "C5")), r.stdout)
+            info = [ln for ln in lines_for(r.stdout, "C5") if "INFO" in ln]
+            self.assertEqual(len(info), 1, r.stdout)
+            self.assertIn("1 secret-shaped file(s) hidden by ignore rules", info[0])
+            self.assertIn("old/app/.env.production", r.stdout)
+
+    def test_a_rule_naming_the_exact_file_also_hides_it_and_is_reported(self):
+        files = {"old/app/.env.production": "A=b\n", ".secauditignore": "old/app/.env.production C5  # public URL only\n"}
+        td, root = make_repo(files)
+        with td:
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertNotIn("tracked secret-shaped file(s); rotate", r.stdout)
+            self.assertIn("hidden by ignore rules", r.stdout)
+
+    def test_a_folder_rule_hides_a_loose_secret_file_and_the_output_names_it(self):
+        td, root = make_repo({"a.txt": "x\n", ".secauditignore": "old/*\n"})
+        with td:
+            (root / "old").mkdir()
+            (root / "old/.env").write_text("A=b\n")
+            out = scan(root, env={"PATH": path_without_gitleaks()}).stdout
+            self.assertFalse(any("WARN" in ln for ln in lines_for(out, "C5")), out)
+            self.assertIn("old/.env", out)
+            self.assertIn("hidden by ignore rules", out)
+
+    def test_a_rule_that_does_not_cover_c5_leaves_secret_files_visible(self):
+        files = {"old/app/.env.production": "A=b\n", ".secauditignore": "old/* A1,D1\n"}
+        td, root = make_repo(files)
+        with td:
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertTrue(any("FAIL" in ln and "tracked secret-shaped" in ln for ln in lines_for(r.stdout, "C5")))
+
     def test_star_matches_across_directories(self):
         files = {"a/b/c/conf.py": "CORS_ALLOW_ALL_ORIGINS = True\n", ".secauditignore": "a/*\n"}
         td, root = make_repo(files)
