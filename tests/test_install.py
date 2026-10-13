@@ -1,0 +1,72 @@
+import os
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def sh(*args, cwd=None, env=None):
+    e = dict(os.environ)
+    e.update(env or {})
+    return subprocess.run(list(args), cwd=cwd, env=e, capture_output=True, text=True)
+
+
+class InstallAgents(unittest.TestCase):
+    def test_links_all_agents_and_is_rerunnable(self):
+        with tempfile.TemporaryDirectory() as home:
+            for _ in range(2):
+                r = sh("bash", str(ROOT / "scripts/install-agents.sh"), env={"HOME": home})
+                self.assertEqual(r.returncode, 0, r.stderr)
+            linked = sorted(p.name for p in (Path(home) / ".claude/agents").glob("n2i-sec-*.md"))
+            self.assertEqual(linked, sorted(p.name for p in (ROOT / "agents").glob("n2i-sec-*.md")))
+            for p in (Path(home) / ".claude/agents").glob("n2i-sec-*.md"):
+                self.assertTrue(p.is_symlink() and p.exists())
+
+    def test_removes_dangling_links(self):
+        with tempfile.TemporaryDirectory() as home:
+            agents = Path(home) / ".claude/agents"
+            agents.mkdir(parents=True)
+            (agents / "n2i-sec-gone.md").symlink_to("/no/such/target")
+            sh("bash", str(ROOT / "scripts/install-agents.sh"), env={"HOME": home})
+            self.assertFalse((agents / "n2i-sec-gone.md").is_symlink())
+
+    def test_does_not_touch_other_skills_agents(self):
+        with tempfile.TemporaryDirectory() as home:
+            agents = Path(home) / ".claude/agents"
+            agents.mkdir(parents=True)
+            (agents / "n2i-unit-runner.md").symlink_to("/no/such/target")
+            sh("bash", str(ROOT / "scripts/install-agents.sh"), env={"HOME": home})
+            self.assertTrue((agents / "n2i-unit-runner.md").is_symlink())
+
+
+class ProjectSync(unittest.TestCase):
+    def test_syntax(self):
+        self.assertEqual(sh("bash", "-n", str(ROOT / "scripts/project-sync.sh")).returncode, 0)
+
+    def test_links_agents_from_every_n2i_skill_and_cleans_dangling(self):
+        with tempfile.TemporaryDirectory() as proj:
+            p = Path(proj)
+            sh("git", "init", "-q", cwd=proj)
+            for skill, agent in (("n2i-sec-audit", "n2i-sec-scanner"), ("n2i-dev-cycle", "n2i-unit-runner")):
+                d = p / ".claude/skills" / skill / "agents"
+                d.mkdir(parents=True)
+                (d / f"{agent}.md").write_text("x")
+            (p / ".claude/agents").mkdir(parents=True)
+            (p / ".claude/agents/n2i-old.md").symlink_to("/no/such/target")
+            r = sh("bash", str(ROOT / "scripts/project-sync.sh"), env={"CLAUDE_PROJECT_DIR": proj})
+            self.assertEqual(r.returncode, 0)
+            self.assertTrue((p / ".claude/agents/n2i-sec-scanner.md").exists())
+            self.assertTrue((p / ".claude/agents/n2i-unit-runner.md").exists())
+            self.assertFalse((p / ".claude/agents/n2i-old.md").is_symlink())
+
+    def test_never_fails_outside_a_repo(self):
+        with tempfile.TemporaryDirectory() as proj:
+            r = sh("bash", str(ROOT / "scripts/project-sync.sh"), env={"CLAUDE_PROJECT_DIR": proj})
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(r.stdout + r.stderr, "")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,30 @@
+# Scheduled deterministic security scan (no LLM, no cost beyond CI minutes).
+# Copy to .github/workflows/security-scan.yml.
+# The scan exits 1 on any FAIL (critical dependency advisories, tracked secret-shaped files,
+# secret-shaped strings), so the run fails. Tune with --fail-on high|none.
+
+name: security-scan
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # monthly, 06:00 UTC on the 1st
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so gitleaks (if you add it) can scan it
+      - name: Fetch n2i-sec-audit
+        run: git clone --depth 1 https://github.com/muneebrbaig/n2i-sec-audit.git /tmp/n2i-sec-audit
+      - name: Scan
+        run: python3 /tmp/n2i-sec-audit/scripts/scan.py . --fail-on critical | tee scan.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan
+          path: scan.txt
+          retention-days: 90

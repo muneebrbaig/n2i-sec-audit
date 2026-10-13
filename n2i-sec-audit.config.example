@@ -1,0 +1,43 @@
+# n2i-sec-audit skill config.
+# Copy this file to <target repo root>/.n2i-sec-audit/config, next to the .git directory.
+# The skill reads it when present. The first run offers to create it for you.
+# The .n2i-sec-audit/ folder holds local, per-developer state. Add this line to the
+# target repo's .gitignore:
+#   .n2i-sec-audit/
+# The folder can also hold a hand-written notes.md (personal repo gotchas), the progress.md
+# step ledger, and last-scan.txt from the scanner.
+# Keep secrets out of this folder. The skill warns if notes.md looks like it holds one.
+# Every key is optional and falls back to the default shown. Format: KEY=value, one per line.
+
+# Where the skill writes reports and where a re-audit looks for the previous one.
+# REPORT_DIR=docs
+# Glob, inside REPORT_DIR, that matches earlier reports.
+# REPORT_GLOB=*security-review*.md
+
+# Shared, committed file that records accepted risks (item ID, owner, date, review-by).
+# ACCEPTED_RISKS=docs/security-accepted-risks.md
+
+# Stacks to audit, space-separated (for example "dotnet angular" or "node").
+# Default: auto-detect.
+# STACKS=auto
+
+# Directories to audit, relative to the repo root. Default: the whole repo.
+# SCOPE_DIRS=backend frontend
+
+# Globs the scanner and searches should skip, such as vendored or legacy code. The skill
+# passes each one to scan.py as --exclude, and the report lists them. For permanent rules
+# that the whole team shares, commit a .secauditignore file at the repo root instead.
+# EXCLUDE_DIRS=old/* third_party/*
+
+# Checklist IDs to skip, separated by spaces. Record the reason in notes.md.
+# CHECK_SKIP=D8 D9
+
+# Local or owned URL for the header and cookie check (one GET). A remote target also
+# needs --allow-remote on the command line as proof you own it.
+# SCAN_URL=http://localhost:5000
+
+# Dependency severity that counts as FAIL in scan.py: critical | high | none.
+# FAIL_ON=critical
+
+# What to offer after the findings: ask | none. Default: ask (plan, tickets, hand-off, or stop).
+# NEXT_STEP=ask

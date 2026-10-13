@@ -1,0 +1,25 @@
+# Scheduled deterministic security scan (no LLM, no cost beyond CI minutes).
+# Copy into your .gitlab-ci.yml, then create a pipeline schedule (CI/CD > Schedules),
+# for example monthly, with the variable SEC_SCAN=1.
+# The scan exits 1 on any FAIL (critical dependency advisories, tracked secret-shaped files,
+# secret-shaped strings), so the schedule fails. Tune with --fail-on high|none.
+#
+# The skill checkout path below assumes the n2i-sec-audit repo is available in the job.
+# Adjust the clone URL to wherever you host it.
+
+security_scan:
+  stage: test
+  image: node:22-bookworm   # any image with python3, git, and your package managers
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SEC_SCAN == "1"'
+  variables:
+    GIT_DEPTH: "0"          # full history, so gitleaks (if you add it) can scan it
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq python3 git >/dev/null
+    - git clone --depth 1 https://github.com/muneebrbaig/n2i-sec-audit.git /tmp/n2i-sec-audit
+  script:
+    - python3 /tmp/n2i-sec-audit/scripts/scan.py . --fail-on critical | tee scan.txt
+  artifacts:
+    when: always
+    paths: [scan.txt]
+    expire_in: 90 days

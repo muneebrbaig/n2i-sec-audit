@@ -1,0 +1,5 @@
+# Known false positives for scanning this repo with its own scanner.
+# Test fixtures hold fake secrets and permissive-config samples on purpose.
+tests/*        A1,C3,C5,D1
+# The scanner's detection patterns look like the things they detect.
+scripts/scan.py   D1
