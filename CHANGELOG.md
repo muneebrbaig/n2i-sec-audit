@@ -2,7 +2,7 @@
 
 ## 0.1.0 (2026-10-13)
 
-First release. The skill has passed its unit tests and one real scan of a production codebase. The behavior evals in `evals/scenarios.md` have not run in a live session yet, so this ships as a pre-release.
+First release. The skill passes its unit tests, and a real scan of a production codebase shaped the defaults. The behavior evals in `evals/scenarios.md` have not run in a live session yet.
 
 - Added the skill with four modes (audit, re-audit, verify, scan) and a six-step flow: orient, scan, audit, challenge, report, next step.
 - Added a 27-item checklist in four categories. The 20 baseline checks plus secrets-in-repo are core, and the rest are extended. Each item maps to the OWASP Top 10 2021, the OWASP API Top 10 2023, and CWE.
