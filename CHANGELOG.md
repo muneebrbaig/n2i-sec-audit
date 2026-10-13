@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 (2026-10-13)
+
+### Changed
+- Dropped "draft" from the title of `evals/scenarios.md`. The scenarios are the skill's
+  behavior checks; they still have to run in a live session.
+
 ## 0.1.0 (2026-10-13)
 
 First release. The skill passes its unit tests, and a real scan of a production codebase shaped the defaults. The behavior evals in `evals/scenarios.md` have not run in a live session yet.

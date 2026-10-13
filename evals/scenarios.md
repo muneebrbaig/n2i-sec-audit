@@ -1,4 +1,4 @@
-# Eval scenarios (draft)
+# Eval scenarios
 
 Behavioral checks for the skill. Each scenario has a prompt, a stop point, and a pass/fail checklist. Run each against `SKILL.md` on sonnet and opus. Grade each item yes/no from the transcript and `git status`.
 
