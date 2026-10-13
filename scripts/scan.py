@@ -163,9 +163,31 @@ def list_files(root):
     return [], found, False
 
 
+def skipped_for_content(rel, tracked_set):
+    """Dependency, cache, and test-run folders are never scanned. Build folders are skipped only for
+    files git does not track: a committed file is source by the owner's choice, so it stays in scope."""
+    if under_skipped(rel, VENDOR_DIRS):
+        return True
+    return rel not in tracked_set and under_skipped(rel, BUILD_DIRS, build=True)
+
+
+def skipped_tracked(tracked):
+    """Count tracked files hidden by the dependency/cache rule, grouped by folder, so the output can say so."""
+    counts = {}
+    for rel in tracked:
+        parts = rel.split("/")
+        for i, part in enumerate(parts[:-1]):
+            if part in VENDOR_DIRS:
+                key = "/".join(parts[:i + 1])
+                counts[key] = counts.get(key, 0) + 1
+                break
+    return counts
+
+
 def code_files(root, tracked, untracked, exts):
+    tracked_set = set(tracked)
     for rel in tracked + untracked:
-        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS, build=True):
+        if skipped_for_content(rel, tracked_set):
             continue
         if os.path.splitext(rel)[1].lower() in exts:
             yield rel
@@ -294,8 +316,9 @@ def check_secrets(root, tracked, untracked, is_git, ig):
                             more(leaks), [file_of(h) for h in leaks])]
         return [Finding("C5", "PASS", "gitleaks: no findings (working tree and history)")]
     hits = []
+    tracked_set = set(tracked)
     for rel in ig.filter(tracked + untracked, "C5"):
-        if under_skipped(rel, VENDOR_DIRS | BUILD_DIRS, build=True) or SENSITIVE_OK.search(rel):
+        if skipped_for_content(rel, tracked_set) or SENSITIVE_OK.search(rel):
             continue
         for lineno, kind in secret_scan.scan_file(os.path.join(root, rel)):
             hits.append(f"{rel}:{lineno}  {kind}")
@@ -464,6 +487,12 @@ def collect(args):
         findings += found or [Finding("D5", "SKIP", "no supported dependency manifests found")]
     if args.url:
         findings += check_headers(args.url)
+    hidden = skipped_tracked(tracked)
+    if hidden:
+        top = sorted(hidden.items(), key=lambda kv: (-kv[1], kv[0]))
+        findings.append(Finding("--", "INFO", f"{sum(hidden.values())} tracked file(s) under dependency or cache "
+                                "folders were not scanned (committed vendor code, for example)",
+                                more([f"{d} ({n} files)" for d, n in top])))
     if ig.skipped:
         findings.append(Finding("--", "INFO", f"{len(ig.skipped)} file(s) left out by {IGNORE_FILE} or --exclude; "
                                 "review those rules before trusting a clean result", more(sorted(ig.skipped))))

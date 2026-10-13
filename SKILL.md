@@ -97,7 +97,7 @@ python3 <SKILL_DIR>/scripts/scan.py <repo> [--url <local-or-owned-url>] [--offli
 - `known` rules match patterns that are almost always noise. `review` rules could hide a real problem (for example a `wwwroot` folder that ships, or a legacy tree that still runs). Recommend a `review` rule only after you have checked the folder.
 - Tracked secret-shaped files are never suggested.
 - Show the list, say which rules you would accept and why, and ask once. Write the accepted rules with `--write --accept <numbers or known>`, then re-run the scan.
-- Tell the user the scanner already skips dependency, cache, test-run, and build folders for code checks (`node_modules`, `bin`, `obj`, `venv`, `vendor`, `test-results`, `playwright-report`, `dist`, `build`, `out`, `output`, `target`, `wwwroot`, `coverage`, and any folder ending in `-output`). It still looks inside build folders for source maps (D3), because they can ship.
+- Tell the user what the scanner skips by default. Dependency, cache, and test-run folders are never scanned (`node_modules`, `bin`, `obj`, `venv`, `vendor`, `test-results`, `playwright-report`, and similar), and the scan output reports how many tracked files that left out. Build folders (`dist`, `build`, `out`, `output`, `target`, `wwwroot`, `coverage`, and any folder ending in `-output`) are skipped only for files git does not track, so committed files stay in scope. D3 still looks inside build folders for source maps, because they can ship.
 - On later runs, ask again only when a new noisy folder dominates the output.
 
 Append `Step 2: scan <summary line>` to the ledger.

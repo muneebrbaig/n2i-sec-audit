@@ -213,17 +213,50 @@ class Output(unittest.TestCase):
 
 
 class BuiltInSkips(unittest.TestCase):
-    def test_generated_and_output_folders_are_skipped_by_the_code_checks(self):
-        files = {f"{d}/conf.py": SECRET_LINE + "CORS_ALLOW_ALL_ORIGINS = True\n"
-                 for d in ("output", "mobile-build-output", "target", "test-results", "playwright-report",
-                           "TestResults", "artifacts")}
+    BUILD_FOLDERS = ("output", "mobile-build-output", "target", "artifacts", "dist", "build", "out", "wwwroot")
+    NEVER_SCANNED = ("test-results", "TestResults", "playwright-report", "vendor")
+
+    def test_untracked_files_in_build_folders_are_skipped(self):
+        td, root = make_repo({"src/ok.py": "x = 1\n"})
+        with td:
+            for d in self.BUILD_FOLDERS:
+                (root / d).mkdir()
+                (root / d / "conf.py").write_text(SECRET_LINE + "CORS_ALLOW_ALL_ORIGINS = True\n")
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertTrue(any("PASS" in ln for ln in lines_for(r.stdout, "D1")), r.stdout)
+            self.assertNotIn(SECRET_VALUE, r.stdout)
+
+    def test_tracked_files_in_build_folders_are_still_scanned(self):
+        files = {f"{d}/conf.py": SECRET_LINE + "CORS_ALLOW_ALL_ORIGINS = True\n" for d in self.BUILD_FOLDERS}
+        td, root = make_repo(files)
+        with td:
+            r = scan(root, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 1, r.stdout)
+            for d in self.BUILD_FOLDERS:
+                with self.subTest(folder=d):
+                    self.assertIn(f"{d}/conf.py:1", r.stdout)
+            self.assertNotIn(SECRET_VALUE, r.stdout)
+
+    def test_dependency_cache_and_test_run_folders_are_never_scanned_and_the_output_says_so(self):
+        files = {f"{d}/conf.py": SECRET_LINE + "CORS_ALLOW_ALL_ORIGINS = True\n" for d in self.NEVER_SCANNED}
         files["src/ok.py"] = "x = 1\n"
         td, root = make_repo(files)
         with td:
             r = scan(root, env={"PATH": path_without_gitleaks()})
             self.assertEqual(r.returncode, 0, r.stdout)
-            self.assertTrue(any("PASS" in ln for ln in lines_for(r.stdout, "D1")), r.stdout)
-            self.assertNotIn(SECRET_VALUE, r.stdout)
+            info = [ln for ln in lines_for(r.stdout, "--") if "tracked file(s)" in ln]
+            self.assertTrue(info, r.stdout)
+            self.assertIn("4 tracked file(s)", info[0])
+            for d in self.NEVER_SCANNED:
+                self.assertIn(f"{d} (1 files)", r.stdout)
+
+    def test_build_folders_are_skipped_outside_a_git_repo(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "dist").mkdir()
+            (Path(td) / "dist/conf.py").write_text(SECRET_LINE)
+            r = scan(td, env={"PATH": path_without_gitleaks()})
+            self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_source_maps_are_still_found_in_output_style_build_folders(self):
         td, root = make_repo({"src/a.ts": "x\n"})

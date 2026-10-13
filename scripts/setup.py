@@ -19,6 +19,7 @@ Nothing here edits source files, .gitignore, or anything outside the two files n
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +31,13 @@ LEGACY = {"old", "legacy", "deprecated", "archive", "archived", "third_party", "
 TEST_DIRS = {"test", "tests", "__tests__", "unittests", "integrationtests", "spec", "specs", "e2e",
              "fixtures", "mocks", "testing", "testdata"}
 NON_SHIPPED_BUILD = {"test-out", "coverage", ".angular", "cache", "tmp", "__snapshots__"}
+# Test files that live next to the code they test. The glob matches the file name in any folder.
+TEST_FILES = [
+    (re.compile(r"\.(spec|test)\.([cm]?[jt]sx?)$"), lambda m: f"*.{m.group(1)}.{m.group(2)}"),
+    (re.compile(r"(Tests?|Spec)\.cs$"), lambda m: f"*{m.group(1)}.cs"),
+    (re.compile(r"^test_.*\.py$"), lambda m: "test_*.py"),
+    (re.compile(r"_test\.(py|go)$"), lambda m: f"*_test.{m.group(1)}"),
+]
 STACK_MANIFESTS = {
     "dotnet": {"suffixes": (".sln", ".slnx", ".csproj")},
     "angular": {"names": {"angular.json"}},
@@ -170,6 +178,10 @@ def classify(rel):
     for i, part in enumerate(parts[:-1]):
         if part.lower() in TEST_DIRS:
             return "/".join(parts[:i + 1]) + "/*", "test code often holds fake secrets and permissive samples", "known"
+    for pattern, make_glob in TEST_FILES:
+        m = pattern.search(parts[-1])
+        if m:
+            return make_glob(m), "test files next to the code often hold fake secrets and permissive samples", "known"
     for i, part in enumerate(parts[:-1]):
         if scan.is_build_dir(part) or part in NON_SHIPPED_BUILD:
             end = min(i + 2, len(parts) - 1)
@@ -249,8 +261,9 @@ def cmd_ignores(args):
         print(f"{'#':<3} {'confidence':<10} {'rule':<44} {'checks':<12} hits  why")
         for g in suggestions:
             print(f"{g['n']:<3} {g['confidence']:<10} {g['glob']:<44} {','.join(g['ids']):<12} {g['count']:<5} {g['reason']}")
-        print("\nThe scanner already skips vendor and build folders for code checks "
-              f"({', '.join(sorted(scan.VENDOR_DIRS | scan.BUILD_DIRS))}, and any folder ending in -output).")
+        print("\nNever scanned, no rule needed: " + ", ".join(sorted(scan.VENDOR_DIRS)) + ".")
+        print("Skipped only for files git does not track: " + ", ".join(sorted(scan.BUILD_DIRS))
+              + ", and any folder ending in -output.")
         print("Tracked secret-shaped files are never suggested. `review` rules can hide a real problem.")
     if not args.write:
         return 0

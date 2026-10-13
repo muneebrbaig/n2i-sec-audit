@@ -164,6 +164,28 @@ class Classify(unittest.TestCase):
                 got = setup_mod.classify(rel)
                 self.assertEqual((got[0], got[2]), (glob, conf))
 
+    def test_test_files_next_to_the_code_get_a_file_pattern_rule(self):
+        cases = {
+            "frontend/src/app/account.service.spec.ts": "*.spec.ts",
+            "src/Button.test.tsx": "*.test.tsx",
+            "backend/Features/UserServiceTests.cs": "*Tests.cs",
+            "backend/Features/UserServiceTest.cs": "*Test.cs",
+            "pkg/test_user.py": "test_*.py",
+            "pkg/user_test.go": "*_test.go",
+        }
+        for rel, glob in cases.items():
+            with self.subTest(rel=rel):
+                got = setup_mod.classify(rel)
+                self.assertEqual((got[0], got[2]), (glob, "known"))
+
+    def test_a_test_folder_rule_wins_over_a_file_pattern_rule(self):
+        self.assertEqual(setup_mod.classify("backend/UnitTests/UserServiceTests.cs")[0], "backend/UnitTests/*")
+
+    def test_file_pattern_globs_match_files_in_any_folder(self):
+        import fnmatch
+        self.assertTrue(fnmatch.fnmatch("frontend/src/a/b.spec.ts", "*.spec.ts"))
+        self.assertFalse(fnmatch.fnmatch("frontend/src/a/b.ts", "*.spec.ts"))
+
     def test_ordinary_source_is_not_noise(self):
         for rel in ("src/app.ts", "backend/Features/User/UserService.cs", "README.md"):
             with self.subTest(rel=rel):
