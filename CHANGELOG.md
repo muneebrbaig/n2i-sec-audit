@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 (2026-10-16)
+
+### Fixed
+- The `Previous report` and `Agents` checks in `SKILL.md` used unquoted globs. zsh aborts with
+  `no matches found` when nothing matches, so the skill failed to load. Both now use `find`.
+  Tests run every start-of-run command under zsh.
+
 ## 0.1.1 (2026-10-13)
 
 ### Changed
