@@ -1,4 +1,6 @@
 import os
+import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -66,6 +68,49 @@ class ProjectSync(unittest.TestCase):
             r = sh("bash", str(ROOT / "scripts/project-sync.sh"), env={"CLAUDE_PROJECT_DIR": proj})
             self.assertEqual(r.returncode, 0)
             self.assertEqual(r.stdout + r.stderr, "")
+
+
+def preamble(label):
+    line = next(l for l in (ROOT / "SKILL.md").read_text().splitlines() if l.startswith(f"- {label}: !`"))
+    return line[line.index("!`") + 2 : line.rindex("`")]
+
+
+@unittest.skipUnless(shutil.which("zsh"), "zsh not installed")
+class PreambleUnderZsh(unittest.TestCase):
+    def run_zsh(self, cmd, cwd, home):
+        r = sh("zsh", "-c", cmd, cwd=cwd, env={"HOME": home})
+        self.assertEqual(r.stderr, "")
+        return r.stdout.strip()
+
+    def test_every_command_runs_clean_in_an_empty_project(self):
+        cmds = re.findall(r"!`([^`]*)`", (ROOT / "SKILL.md").read_text())
+        self.assertTrue(cmds)
+        with tempfile.TemporaryDirectory() as proj, tempfile.TemporaryDirectory() as home:
+            for cmd in cmds:
+                self.run_zsh(cmd, proj, home)
+
+    def test_agents_reports_missing_then_ok(self):
+        with tempfile.TemporaryDirectory() as proj, tempfile.TemporaryDirectory() as home:
+            agents = Path(proj) / ".claude/skills/n2i-sec-audit/agents"
+            agents.mkdir(parents=True)
+            (agents / "n2i-sec-one.md").write_text("x")
+            self.assertEqual(self.run_zsh(preamble("Agents"), proj, home), "AGENTS=missing: n2i-sec-one")
+            (Path(proj) / ".claude/agents").mkdir(parents=True)
+            (Path(proj) / ".claude/agents/n2i-sec-one.md").write_text("x")
+            self.assertEqual(self.run_zsh(preamble("Agents"), proj, home), "AGENTS=ok")
+
+    def test_previous_report_picks_newest_match(self):
+        with tempfile.TemporaryDirectory() as proj, tempfile.TemporaryDirectory() as home:
+            docs = Path(proj) / "docs"
+            docs.mkdir()
+            old, new = docs / "2026-01-security-review.md", docs / "2026-02-security-review.md"
+            old.write_text("x")
+            new.write_text("x")
+            os.utime(old, (1, 1))
+            self.assertEqual(
+                self.run_zsh(preamble("Previous report"), proj, home),
+                "PREVIOUS_REPORT=docs/2026-02-security-review.md",
+            )
 
 
 if __name__ == "__main__":
